@@ -72,6 +72,22 @@ bairros_centro_expandido = ["LIBERDADE","JARDIM PAULISTA", "SÉ","CENTRO HISTÓR
 
 df_roubos_24 = df_roubos_24[df_roubos_24["BAIRRO"].isin(bairros_centro_expandido)]
 
+
+duplicados_roubos = df_roubos_24[df_roubos_24['NUM_BO'].duplicated()]
+
+if not duplicados_roubos.empty:
+	print("bos duplicados")
+	print(duplicados_roubos)
+else:
+	print("nenhum bo duplicado")
+
+df_roubos_24 = df_roubos_24.drop_duplicates(subset="NUM_BO", keep=False)
+
+df_roubos_24 = df_roubos_24.dropna(subset=['LATITUDE', 'LONGITUDE'])# Remove linhas com valores NaN
+
+df_roubos_24 = df_roubos_24[(df_roubos_24['LATITUDE'] != 0) & (df_roubos_24['LONGITUDE'] !=0 )]  # Remove linhas com zeros
+
+
 #%% limpeza df drogas
 
 # Visualizar as 15 primeiras linhas de cada DataFrame original (df_drogas_24_1 e df_drogas_24_2)
@@ -114,13 +130,74 @@ print("\nBairros únicos (primeiros 2846):")
 print(df_bairros_r["Bairros"].head(2846))
 
 
-bairros_centro_expandido_drogas = [ "Liberdade","Consolação", "Cambuci", "Vila da Saúde", "Moema", "Vila Mariana","Ibirapuera","Jardim Anália Franco","JARDIM PAULISTA", "BELA VISTA","SÉ", "CENTRO HISTÓRICO DE SÃO PAULO","CENTRO","LIBERDADE","REPUBLICA", "REPÚBLICA", "BOM RETIRO","CONSOLAÇÃO", "CONSOLACAO", "SANTA CECILIA","SANTA CECÍLIA","CERQUEIRA CÉSAR", "HIGIENÓPOLIS","PARAÍSO","VILA MARIANA","ACLIMAÇÃO","CAMBUCI", "BARRA FUNDA", "ÁGUA BRANCA","PACEMBU","CERQUEIRA CESAR", "VILA BUARQUE", "JARDINS",  "JARDIM AMÉRICA", "VILA NOVA CONCEIÇÃO","JARDIM PAULISTANO", "Sé", "Jardim America",  "Barra Funda", "Vila Maria Baixa", "Jardim America da Penha", "Consolação", "Luz","Santa Cecilia", "Planalto Paulista", "Jardim Europa", "Cerqueira César",  "Vila Romana", "Pompeia", "Aclimação", "Higienópolis", "Ipiranga"]
+bairros_centro_expandido_drogas = [ "Liberdade","Consolação", "Cambuci", "Vila da Saúde", "Moema", "Vila Mariana","Ibirapuera","Jardim Anália Franco","JARDIM PAULISTA", "BELA VISTA","SÉ", "CENTRO HISTÓRICO DE SÃO PAULO","CENTRO","LIBERDADE","REPUBLICA", "REPÚBLICA", "BOM RETIRO","CONSOLAÇÃO", "CONSOLACAO", "SANTA CECILIA","SANTA CECÍLIA","CERQUEIRA CÉSAR", "HIGIENÓPOLIS","PARAÍSO","VILA MARIANA","ACLIMAÇÃO","CAMBUCI", "BARRA FUNDA", "ÁGUA BRANCA","PACEMBU","CERQUEIRA CESAR", "VILA BUARQUE", "JARDINS",  "JARDIM AMÉRICA", "VILA NOVA CONCEIÇÃO","JARDIM PAULISTANO", "Sé", "Jardim America",  "Barra Funda", "Vila Maria Baixa", "Jardim America da Penha", "Consolação", "Luz","Santa Cecilia", "Planalto Paulista", "Jardim Europa", "Cerqueira César",  "Vila Romana", "Pompeia", "Aclimação", "Higienópolis"]
 
 df_concat_24 = df_concat_24[df_concat_24["BAIRRO"].isin(bairros_centro_expandido_drogas)]
 
 df_concat_24 = df_concat_24[(df_concat_24["NATUREZA_APURADA"] == "PORTE DE ENTORPECENTES") | (df_concat_24["NATUREZA_APURADA"] == "TRÁFICO DE ENTORPECENTES")]
 
+df_concat_24_drogas = df_concat_24
+
+
+duplicados_drogas = df_concat_24_drogas[df_concat_24_drogas['NUM_BO'].duplicated()]
+
+if not duplicados_drogas.empty:
+	print("bos duplicados")
+	print(duplicados_drogas)
+else:
+	print("nenhum bo duplicado")
+
+df_concat_24_drogas = df_concat_24_drogas.drop_duplicates(subset='NUM_BO', keep=False)
+
+df_concat_24_drogas = df_concat_24_drogas.dropna(subset=['LATITUDE', 'LONGITUDE'])# Remove linhas com valores NaN
+
+df_concat_24_drogas = df_concat_24_drogas[(df_concat_24_drogas['LATITUDE'] != 0) & (df_concat_24_drogas['LONGITUDE'] !=0 )]  # Remove linhas com zeros
+
 #%%
 
-df_concat_24.to_csv('df_concat_drogas_24', index=False)
+df_concat_24_drogas .to_csv('df_concat_drogas_24', index=False)
 df_roubos_24.to_csv('df_roubos_24', index=False)
+#%%
+import geopandas as gpd
+
+# Renomear colunas para evitar truncamento
+df_concat_24_drogas = df_concat_24_drogas.rename(columns=lambda x: x[:10])
+
+# Remover colunas duplicadas
+df_concat_24_drogas = df_concat_24_drogas.loc[:, ~df_concat_24_drogas.columns.duplicated()]
+
+
+# Converter colunas datetime para string (se existirem)
+for col in df_concat_24_drogas.select_dtypes(include=['datetime64[ns]']).columns:
+    df_concat_24_drogas[col] = df_concat_24_drogas[col].astype(str)
+
+# Criar o GeoDataFrame
+gdf_drogas = gpd.GeoDataFrame(
+    df_concat_24_drogas,
+    geometry=gpd.points_from_xy(df_concat_24_drogas['LONGITUDE'], df_concat_24_drogas['LATITUDE']),
+    crs="EPSG:4326"  # Define o CRS como WGS 84
+)
+
+# Salvar como Shapefile
+gdf_drogas.to_file("df_drogas_24.shp", driver="ESRI Shapefile")
+#%%
+
+# Renomear colunas para evitar truncamento
+df_roubos_24 = df_roubos_24.rename(columns=lambda x: x[:10])
+
+# Remover colunas duplicadas
+df_roubos_24 = df_roubos_24.loc[:, ~df_roubos_24.columns.duplicated()]
+
+# Converter colunas datetime para string (se existirem)
+for col in df_roubos_24.select_dtypes(include=['datetime64[ns]']).columns:
+    df_roubos_24[col] = df_roubos_24[col].astype(str)
+
+# Criar o GeoDataFrame
+gdf_roubos = gpd.GeoDataFrame(
+    df_roubos_24,
+    geometry=gpd.points_from_xy(df_roubos_24['LONGITUDE'], df_roubos_24['LATITUDE']),
+    crs="EPSG:4326"  # Define o CRS como WGS 84
+)
+
+# Salvar como Shapefile
+gdf_roubos.to_file("df_roubos_24.shp", driver="ESRI Shapefile")
