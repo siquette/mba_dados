@@ -118,7 +118,7 @@ try:
     coords = np.array(df_roubos.geometry.apply(lambda p: [p.x, p.y]).tolist())
 
     # Criando pesos espaciais (distância - ajuste o threshold conforme necessário)
-    w = DistanceBand.from_dataframe(df_roubos, threshold=1000, binary=True, silence_warnings=True) # Threshold em metros
+    w = DistanceBand.from_dataframe(df_roubos, threshold=6000, binary=True, silence_warnings=True) # Threshold em metros
 
 
     # Função K de Ripley
