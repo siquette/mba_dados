@@ -1,0 +1,202 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+ 
+
+```{r}
+# Instalar e carregar bibliotecas necessárias
+necessary_packages <- c("sf", "spdep", "tidyverse", "ncf")
+
+new_packages <- necessary_packages[!necessary_packages %in% installed.packages()[,"Package"]]
+if(length(new_packages)) install.packages(new_packages)
+   
+          
+```
+
+```{r}
+# Carregar as bibliotecas
+library(sf)
+library(spdep)
+library(ncf)
+library(sp)
+#library(tidyverse)
+
+
+```
+
+```{r}
+
+# Leitura do shapefile
+h3_roubo_moran <- st_read("/home/ras/Documentos/mba/git/mba_arrumado/h3/h3_drogas_agregado/content/h3_roubo_agregado.shp"
+)
+```
+
+```{r}
+
+# Verificar estrutura do Spatial Data Frame
+h3_roubo_moran_sp <- as(h3_roubo_moran, "Spatial")
+
+# Criar vizinhança espacial baseada em polígonos adjacentes
+h3_roubo_moran_vizinhanca <- poly2nb(h3_roubo_moran_sp)
+
+# Criar matriz de pesos espaciais para análise
+h3_roubo_pesos <- nb2listw(h3_roubo_moran_vizinhanca, style = "W")
+
+
+
+```
+
+
+```{r}
+# Calcular o Índice Global de Moran
+resultado_moran <- moran.test(h3_roubo_moran_sp$contagem, h3_roubo_pesos)
+print(resultado_moran)
+
+```
+
+```{r}
+# Plot correlograma de contiguidade espacial
+correlograma_contig <- sp.correlogram(h3_roubo_moran_vizinhanca, h3_roubo_moran_sp$contagem, order = 5, method = "I", style = "W")
+plot(correlograma_contig)
+```
+
+
+```{r}
+correlograma_contig 
+```
+```{r}
+# Projete para um sistema métrico (SIRGAS 2000 / UTM 23S)
+h3_roubo_moran <- st_transform(h3_roubo_moran, crs = 31983)
+
+# Verifique as coordenadas após projeção
+coords <- coordinates(as(h3_roubo_moran, "Spatial"))
+
+# Reduza o incremento e reamostre
+correlograma_distancia <- correlog(
+  x = coords[, 1],
+  y = coords[, 2],
+  z = h3_roubo_moran$contagem,
+  increment = 500,   # Distância (em metros)
+  resamp = 200        # Maior reamostragem para maior robustez
+)
+
+# Plot do correlograma
+plot(correlograma_distancia)
+```
+```{r}
+h3_roubo_moran <- st_transform(h3_roubo_moran, crs = 31983)
+coords_h3 <- coordinates(as(h3_roubo_moran, "Spatial"))
+vizinhanca_h3 <- poly2nb(as(h3_roubo_moran, "Spatial"))
+pesos_h3 <- nb2listw(vizinhanca_h3, style = "W")
+
+# Calcular o Índice Local de Moran
+lisa <- localmoran(h3_roubo_moran$contagem, pesos_h3)
+
+# Adicionar resultados de LISA aos dados espaciais
+h3_roubo_moran$lisa_stat <- lisa[, "Ii"]
+h3_roubo_moran$p_value <- lisa[, "Pr(z != E(Ii))"]
+
+# Criar um mapa LISA plotando os valores sobre o shapefile
+library(ggplot2)
+
+lisa_map <- ggplot() +
+  geom_sf(data = h3_roubo_moran, aes(fill = lisa_stat)) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(fill = "LISA Statistic", title = "Mapa LISA")
+
+print(lisa_map)
+```
+```{r}
+# Mapeamento do CRS
+h3_roubo_moran <- st_transform(h3_roubo_moran, crs = 31983)
+coords_h3 <- coordinates(as(h3_roubo_moran, "Spatial"))
+vizinhanca_h3 <- poly2nb(as(h3_roubo_moran, "Spatial"))
+pesos_h3 <- nb2listw(vizinhanca_h3, style = "W")
+
+# Calcular o Índice Local de Moran (LISA)
+lisa <- localmoran(h3_roubo_moran$contagem, pesos_h3)
+
+# Adicionando resultados ao dataset espacial
+h3_roubo_moran$lisa_stat <- lisa[, "Ii"]
+h3_roubo_moran$p_value <- lisa[, "Pr(z != E(Ii))"]
+
+# Classificar clusters espaciais LISA como HH, HL, LH, LL ou insignificantes
+h3_roubo_moran$classification <- "Insignificant"
+significance_level <- 0.5  # Threshold de significância
+
+# Cálculo do valor médio de referência
+mean_contagem <- mean(h3_roubo_moran$contagem, na.rm = TRUE)
+
+# Classe do cluster:
+# - HH: Altos valores locais influenciados por vizinhos altos
+# - HL: Altos valores locais próximos de vizinhos baixos
+# - LH: Baixos valores locais próximos de vizinhos altos
+# - LL: Baixos valores locais próximos de vizinhos baixos
+high <- h3_roubo_moran$contagem > mean_contagem  # Altos valores locais
+low <- !high  # Baixos valores locais
+
+high_lisa <- h3_roubo_moran$lisa_stat > 0
+low_lisa <- h3_roubo_moran$lisa_stat < 0
+
+# Aplicar as condições para cluster significativo
+h3_roubo_moran$classification[high & high_lisa & (h3_roubo_moran$p_value < significance_level)] <- "HH"
+h3_roubo_moran$classification[high & low_lisa & (h3_roubo_moran$p_value < significance_level)] <- "HL"
+h3_roubo_moran$classification[low & high_lisa & (h3_roubo_moran$p_value < significance_level)] <- "LH"
+h3_roubo_moran$classification[low & low_lisa & (h3_roubo_moran$p_value < significance_level)] <- "LL"
+
+# Visualizando a contagem das classificações
+table(h3_roubo_moran$classification)
+
+# Criar o mapa LISA com classificação usando cores específicas
+lisa_map <- ggplot() +
+  geom_sf(data = h3_roubo_moran, aes(fill = classification)) +
+  scale_fill_manual(values = c("Insignificant" = "gray",
+                               "HH" = "#E41A1C",
+                               "HL" = "#377EB8",
+                               "LH" = "#4DAF4A",
+                               "LL" = "#984EA3")) +
+  theme_minimal() +
+  labs(fill = "LISA Clusters", title = "Mapa LISA com Clusters Significativos")
+
+print(lisa_map)
+```
+```{r}
+install.packages("textshaping")
+install.packages("ragg")
+install.packages("tidyverse")
+```
+
+```{r}
+
+library(tidyverse)
+# Contar registros por categoria
+table(h3_roubo_moran$classification)
+
+# Visualizar os dados com p-value, lisa_stat e contagem
+test <-h3_roubo_moran %>% 
+  st_drop_geometry() %>%  # Remover geometria para visualizar a tabela
+  select(contagem, lisa_stat, p_value, classification) %>% 
+  arrange(p_value)
+```
+
+```{r}
+# Criar um plot de dispersão de Moran
+wm <- as.vector(lag.listw(pesos_h3, h3_roubo_moran$contagem)) # médias ponderadas
+moran_df <- data.frame(contagem = h3_roubo_moran$contagem, wm = wm)
+
+moran_plot <- ggplot(moran_df, aes(x = contagem, y = wm)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  geom_hline(yintercept = mean(wm), linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = mean(h3_roubo_moran$contagem), linetype = "dashed", color = "blue") +
+  theme_minimal() +
+  labs(x = "Contagem Local",
+       y = "Contagem Média Ponderada dos Vizinhos",
+       title = "Diagrama de Espalhamento de Moran")
+
+print(moran_plot)
+```
+
+
